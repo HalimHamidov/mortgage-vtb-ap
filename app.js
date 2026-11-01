@@ -68,7 +68,9 @@ function renderTable(){
   filtered=rows.filter(r=>(year==='all'||r.date.startsWith(year))&&(period==='all'||(period==='future'?r.date>=asof():r.date<asof()))&&(!query||date(r.date).includes(query)||r.date.includes(query)||String(r.n)===query||date(r.start).includes(query)));
   const months=[...new Set(filtered.map(r=>r.date.slice(0,7)))];
   const pages=Math.max(1,Math.ceil(months.length/monthsPerPage));page=Math.max(0,Math.min(page,pages-1));
-  const visibleMonths=months.slice(page*monthsPerPage,(page+1)*monthsPerPage);
+  const showAll=$('pageSize').value==='all';
+  $('pagination').hidden=showAll;
+  const visibleMonths=showAll?months:months.slice(page*monthsPerPage,(page+1)*monthsPerPage);
   const visibleRows=filtered.filter(r=>visibleMonths.includes(r.date.slice(0,7)));
   $('rows').innerHTML=visibleRows.map(r=>`<tr class="${r.n===rows[selected].n?'active':''}"><td>${r.n}</td><td>${date(r.date)}${r.start!==r.date?'<small>с '+date(r.start)+'</small>':''}</td><td><strong>${rub(r.payment).replace(/\s*₽/,'')}</strong></td><td>${rub(r.principal).replace(/\s*₽/,'')}</td><td>${rub(r.interest).replace(/\s*₽/,'')}</td><td>${rub(r.balance).replace(/\s*₽/,'')}</td></tr>`).join('');
   $('tableSummary').textContent=`${filtered.length} строк · платежи ${rub(sum(filtered,'payment'))} · проценты ${rub(sum(filtered,'interest'))}`;
@@ -102,7 +104,7 @@ selected=Math.max(0,rows.findIndex(r=>r.date>=asof()&&r.payment>0));summary();se
 $('asof').addEventListener('change',()=>{if(!$('asof').value)$('asof').value=data.updated;page=0;summary();renderTable()});
 $('today').onclick=()=>{$('asof').value=today();page=0;summary();renderTable()};
 $('cursor').oninput=()=>{selected=Number($('cursor').value);selection()};
-['period','year','search'].forEach(id=>$(id).addEventListener(id==='search'?'input':'change',()=>{page=0;renderTable()}));
+['period','year','search','pageSize'].forEach(id=>$(id).addEventListener(id==='search'?'input':'change',()=>{page=0;renderTable()}));
 $('reset').onclick=()=>{$('period').value='all';$('year').value='all';$('search').value='';page=0;renderTable()};
 $('prev').onclick=()=>{page--;renderTable()};$('next').onclick=()=>{page++;renderTable()};
 $('pageJump').onsubmit=event=>{event.preventDefault();if(!$('pageJump').reportValidity())return;page=Number($('pageNumber').value)-1;renderTable()};
@@ -110,4 +112,3 @@ $('goNext').onclick=()=>{if(!nextRow)return;selected=rows.indexOf(nextRow);$('pe
 ['chartBalance','chartPayments'].forEach((id,i)=>$(id).onclick=()=>{mode=i?'payments':'balance';['chartBalance','chartPayments'].forEach(other=>{$(other).classList.toggle('selected',other===id);$(other).setAttribute('aria-pressed',String(other===id))});renderChart()});
 $('export').onclick=()=>{const header=['Номер','Начальная дата','Дата платежа','Платеж RUB','Основной долг RUB','Проценты RUB','Остаток RUB'];const lines=filtered.map(r=>[r.n,date(r.start),date(r.date),...[r.payment,r.principal,r.interest,r.balance].map(c=>(c/100).toFixed(2).replace('.',','))].join(';'));const url=URL.createObjectURL(new Blob(['\ufeff'+[header.join(';'),...lines].join('\r\n')],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='vtb-ap-'+asof()+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 window.addEventListener('resize',renderChart);
-
