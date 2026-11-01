@@ -7,7 +7,53 @@ let page=0, mode='balance', selected=0, filtered=[], nextRow;
 const monthsPerPage=12;
 function sum(list,key){return list.reduce((s,r)=>s+r[key],0)}
 function asof(){return $('asof').value||data.updated}
+function remainingTerm(from,to){
+  if(from>=to)return {months:0,days:0};
+  const a=new Date(from+'T00:00:00Z'),b=new Date(to+'T00:00:00Z');
+  let months=(b.getUTCFullYear()-a.getUTCFullYear())*12+b.getUTCMonth()-a.getUTCMonth();
+  const anniversary=count=>{
+    const d=new Date(Date.UTC(a.getUTCFullYear(),a.getUTCMonth()+count,1));
+    const last=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate();
+    d.setUTCDate(Math.min(a.getUTCDate(),last));return d;
+  };
+  if(anniversary(months)>b)months--;
+  return {months,days:Math.round((b-anniversary(months))/86400000)};
+}
+function plural(n,forms){return forms[n%100>=11&&n%100<=14?2:n%10===1?0:n%10>=2&&n%10<=4?1:2]}
+function renderRemainingTerm(){
+  const end=rows.filter(r=>r.payment>0).at(-1).date;
+  const left=remainingTerm(asof(),end),years=Math.floor(left.months/12),months=left.months%12;
+  $('remainingTerm').textContent=asof()>end?'Срок графика завершён':years+' '+plural(years,['год','года','лет'])+' '+months+' '+plural(months,['месяц','месяца','месяцев']);
+  $('remainingDetail').textContent='До '+date(end)+' · '+left.months+' '+plural(left.months,['месяц','месяца','месяцев'])+' и '+left.days+' '+plural(left.days,['день','дня','дней']);
+}
+function renderMonthlyReview(){
+  const review=data.review,october=rows.filter(r=>r.date.startsWith(review.month));
+  const regular=october.filter(r=>review.regularPaymentNumbers.includes(r.n));
+  const extra=october.filter(r=>!review.regularPaymentNumbers.includes(r.n));
+  const recorded=rows.filter(r=>r.date.startsWith(review.planMonth)&&review.recordedPaymentNumbers.includes(r.n));
+  const planned=rows.filter(r=>r.date.startsWith(review.planMonth)&&review.plannedPaymentNumbers.includes(r.n));
+  const breakdown=(id,items)=>$(id).innerHTML=items.map(([label,value])=>'<div><dt>'+label+'</dt><dd>'+value+'</dd></div>').join('');
+  $('octoberExtraPrincipal').textContent=rub(sum(extra,'principal'));
+  breakdown('octoberBreakdown',[
+    ['Досрочные взносы ('+extra.length+')',rub(sum(extra,'payment'))],
+    ['Проценты в досрочных взносах',rub(sum(extra,'interest'))],
+    ['Основной долг в плановом платеже',rub(sum(regular,'principal'))],
+    ['Всего погашено основного долга',rub(sum(october,'principal'))],
+    ['Остаток на конец октября',rub(october.at(-1).balance)]
+  ]);
+  $('novemberPayment').textContent=rub(sum(planned,'payment'));
+  $('novemberDue').textContent='Плановый платёж '+date(planned[0].date);
+  breakdown('novemberBreakdown',[
+    ['В основной долг',rub(sum(planned,'principal'))],
+    ['Проценты',rub(sum(planned,'interest'))],
+    ['Досрочно внесено 1 ноября',rub(sum(recorded,'payment'))],
+    ['Из них в основной долг',rub(sum(recorded,'principal'))],
+    ['Всего взносов за ноябрь с учётом плана',rub(sum(recorded,'payment')+sum(planned,'payment'))],
+    ['Остаток после планового платежа',rub(planned.at(-1).balance)]
+  ]);
+}
 function summary(){
+  renderRemainingTerm();
   const prior=rows.filter(r=>r.date<asof()), balance=prior.length?prior.at(-1).balance:data.initial;
   $('balance').textContent=rub(balance);const percent=(1-balance/data.initial)*100;
   $('progress').style.width=percent+'%';$('progressText').textContent=`Погашено основного долга: ${rub(data.initial-balance)} · ${percent.toFixed(1).replace('.',',')}%`;
@@ -51,7 +97,7 @@ function renderChart(){
 }
 function selection(){const r=rows[selected];$('cursor').value=selected;$('cursorLabel').textContent=`№ ${r.n} · ${date(r.date)}`;$('detail').innerHTML=[['Платёж',r.payment],['В основной долг',r.principal],['Проценты',r.interest],['Остаток после платежа',r.balance]].map(([label,val])=>`<div>${label}<strong>${rub(val)}</strong></div>`).join('');renderChart();renderTable()}
 $('initial').textContent=rub(data.initial);$('allInterest').textContent=rub(sum(rows,'interest'));$('end').textContent=date(rows.filter(r=>r.payment>0).at(-1).date);
-$('asof').value=today();[...new Set(rows.map(r=>r.date.slice(0,4)))].forEach(y=>$('year').add(new Option(y,y)));
+$('asof').value=today();$('cursor').max=rows.length-1;renderMonthlyReview();[...new Set(rows.map(r=>r.date.slice(0,4)))].forEach(y=>$('year').add(new Option(y,y)));
 selected=Math.max(0,rows.findIndex(r=>r.date>=asof()&&r.payment>0));summary();selection();
 $('asof').addEventListener('change',()=>{if(!$('asof').value)$('asof').value=data.updated;page=0;summary();renderTable()});
 $('today').onclick=()=>{$('asof').value=today();page=0;summary();renderTable()};
@@ -64,3 +110,4 @@ $('goNext').onclick=()=>{if(!nextRow)return;selected=rows.indexOf(nextRow);$('pe
 ['chartBalance','chartPayments'].forEach((id,i)=>$(id).onclick=()=>{mode=i?'payments':'balance';['chartBalance','chartPayments'].forEach(other=>{$(other).classList.toggle('selected',other===id);$(other).setAttribute('aria-pressed',String(other===id))});renderChart()});
 $('export').onclick=()=>{const header=['Номер','Начальная дата','Дата платежа','Платеж RUB','Основной долг RUB','Проценты RUB','Остаток RUB'];const lines=filtered.map(r=>[r.n,date(r.start),date(r.date),...[r.payment,r.principal,r.interest,r.balance].map(c=>(c/100).toFixed(2).replace('.',','))].join(';'));const url=URL.createObjectURL(new Blob(['\ufeff'+[header.join(';'),...lines].join('\r\n')],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='vtb-ap-'+asof()+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 window.addEventListener('resize',renderChart);
+
