@@ -66,6 +66,10 @@
     }
     el('arcadeFinish').textContent=displayDate(projection.end);
     el('arcadeDuration').textContent=projection.monthlyCount+' ежемесячных платежей'+(route.at(-1)?.finalExtra?' + досрочный финиш':'');
+    const costs=window.summarizePayoff(source,projection,scenario(0));
+    el('arcadeSavings').textContent=money(costs.savings/100);
+    el('arcadeCostRows').innerHTML=[['Основной долг','principal'],['Проценты','interest'],['Всего выплат','total']].map(([title,key])=>'<tr><th scope="row">'+title+'</th>'+['past','future','lifetime'].map(period=>'<td>'+money(costs[period][key]/100)+'</td>').join('')+'</tr>').join('');
+    el('arcadeCashSplit').textContent='Будущие выплаты: по ежемесячному графику '+money(costs.regular/100)+' + дополнительные ежедневные взносы '+money(costs.extra/100)+'. Дополнительные взносы уже включены в итог; они покрывают проценты и основной долг по модели.';
     el('timelineScenario').textContent=dailyAmount?'Расчетный сценарий: +'+money(dailyAmount)+' в '+unit():'Банковский график без новых досрочных взносов';
     el('arcadeTimeline').innerHTML=[...years].map(([year,entries],i)=>'<details'+(i===0?' open':'')+'><summary>'+year+' год <span>'+entries.length+' дат</span></summary><div class="table-wrap"><table><caption class="sr-only">Хронология погашения за '+year+' год</caption><thead><tr><th scope="col">Месяц / дата</th><th scope="col">Плановый взнос</th><th scope="col">Досрочно за интервал</th><th scope="col">Погашено тела за интервал</th><th scope="col">Остаток</th></tr></thead><tbody>'+entries.join('')+'</tbody></table></div></details>').join('');
     el('timelineExpand').textContent='Развернуть годы';

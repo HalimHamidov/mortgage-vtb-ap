@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ru">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#143fce"><link rel="icon" href="favicon.svg" type="image/svg+xml"><title>ВТБ · Апартамент — график ипотеки</title><link rel="stylesheet" href="style.css?v=20261101-nav"><script defer src="data.js?v=20261101-paid"></script><script defer src="app.js?v=20261101-paid"></script><script defer src="gate.js"></script><link rel="stylesheet" href="arcade.css?v=5"><script defer src="payoff-model.js?v=3"></script><script defer src="platformer.js?v=2"></script><script defer src="arcade.js?v=7"></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#143fce"><link rel="icon" href="favicon.svg" type="image/svg+xml"><title>ВТБ · Апартамент — график ипотеки</title><link rel="stylesheet" href="style.css?v=20261101-nav"><script defer src="data.js?v=20261101-paid"></script><script defer src="app.js?v=20261101-paid"></script><script defer src="gate.js"></script><link rel="stylesheet" href="arcade.css?v=5"><script defer src="payoff-model.js?v=4"></script><script defer src="platformer.js?v=2"></script><script defer src="arcade.js?v=8"></script></head>
 <body>
 <section id="pinGate" class="pin-gate" aria-labelledby="pinTitle"><form id="pinForm" class="pin-form"><span class="mark">ВТБ</span><p class="eyebrow">АПАРТАМЕНТ</p><h1 id="pinTitle">Введите PIN-код</h1><p class="muted">Чтобы открыть график ипотеки.</p><label for="pin">PIN-код</label><input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="off" required autofocus aria-describedby="pinError" placeholder="••••"><p id="pinError" role="status" aria-live="polite"></p><button type="submit" id="unlock">Войти →</button><noscript><p>Для входа включите JavaScript в браузере.</p></noscript></form></section>
 <div id="app" hidden>
@@ -31,6 +31,10 @@
 <div class="section-heading"><div><p class="eyebrow">ТВОЙ ПУТЬ ПО ГОДАМ И МЕСЯЦАМ</p><h3 id="timelineTitle">Хронология погашения</h3></div><button type="button" id="timelineExpand">Развернуть годы</button></div>
 <div class="timeline-summary"><div><span>Дата финиша</span><strong id="arcadeFinish"></strong></div><div><span>До полного погашения</span><strong id="arcadeDuration"></strong></div></div>
 <p class="muted" id="timelineScenario" aria-live="polite"></p>
+<div class="timeline-summary"><div><span>Экономия процентов относительно обычного графика</span><strong id="arcadeSavings"></strong></div></div>
+<div class="table-wrap"><table><caption>Стоимость ипотеки в выбранном режиме, ₽</caption><thead><tr><th scope="col">Состав выплат</th><th scope="col">Уже выплачено по данным отчета</th><th scope="col">Предстоит от даты снимка</th><th scope="col">За весь срок</th></tr></thead><tbody id="arcadeCostRows"></tbody></table></div>
+<p class="muted" id="arcadeCashSplit"></p>
+<p class="muted">Итоги досрочных режимов — оценка при текущей ставке. Страховки, комиссии и другие расходы вне графика не включены. Суммы относятся ко всему выбранному сценарию и не зависят от прохождения игры.</p>
 <p class="note">Каждая строка — состояние на дату платежа или финального закрытия. Досрочные взносы и погашение тела суммируются с предыдущей даты, а не за календарный месяц. Сценарий меняется вместе с кнопками выше.</p>
 <div id="arcadeTimeline"></div>
 </section>

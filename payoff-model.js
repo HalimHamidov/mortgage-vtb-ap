@@ -1,4 +1,17 @@
 'use strict';
+// All amounts are integer kopecks. Extra payments are part of total cash paid.
+window.summarizePayoff = function(source,projection,baseline){
+  const asof=source.paymentConfirmationDate||source.updated;
+  const confirmed=source.confirmedPaymentNumbers||[];
+  const paid=source.rows.filter(r=>r.date<asof||(r.date===asof&&confirmed.includes(r.n)));
+  const sum=(rows,key)=>rows.reduce((total,row)=>total+(row[key]||0),0);
+  const past={total:sum(paid,'payment'),principal:sum(paid,'principal'),interest:sum(paid,'interest')};
+  const regular=sum(projection.stages,'payment'),extra=projection.extra||0;
+  const future={total:regular+extra,principal:projection.initial,interest:regular+extra-projection.initial};
+  const lifetime=Object.fromEntries(Object.keys(past).map(key=>[key,past[key]+future[key]]));
+  const baselineTotal=sum(baseline.stages,'payment')+(baseline.extra||0);
+  return {past,future,lifetime,regular,extra,savings:baselineTotal-future.total};
+};
 // Illustrative cash-flow projection, not a replacement for the bank schedule.
 window.projectPayoff = function(source,dailyExtra=200000){
   if(!Number.isInteger(dailyExtra)||dailyExtra<0)throw new Error('Daily payment must be nonnegative integer kopecks');
