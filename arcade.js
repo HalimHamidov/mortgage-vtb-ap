@@ -1,0 +1,76 @@
+'use strict';
+(() => {
+  const root=document.getElementById('payoffArcade'),canvas=document.getElementById('arcadeCanvas');
+  if(!root||!canvas)return;
+  const ctx=canvas.getContext('2d'),el=id=>document.getElementById(id);
+  const source=window.MORTGAGE,now=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const payments=source.rows.filter(r=>r.payment>0&&r.date>=now&&!(source.confirmedPaymentNumbers||[]).includes(r.n));
+  const total=payments.length,money=n=>new Intl.NumberFormat('ru-RU').format(n)+' ₽';
+  let running=false,started=false,finished=false,passed=0,progress=0,jump=0,boost=0,days=0,dailyClock=0,last=0,frame=0,world=0,sparks=[];
+  const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function stats(){
+    el('arcadeCount').textContent=passed+' / '+total;
+    el('arcadeDaily').textContent=money(days*2000);
+    el('arcadeBar').value=passed;el('arcadeBar').max=Math.max(1,total);
+    el('arcadeMonthly').textContent=payments[passed]?money(payments[passed].payment/100):'Все пройдены!';
+    el('arcadePause').disabled=!started||finished;
+    el('arcadePause').textContent=running?'Пауза':'Продолжить';
+    el('arcadeBoost').disabled=!running;
+    el('arcadeJump').disabled=!running;
+  }
+  function message(text){el('arcadeMessage').textContent=text;}
+  function reset(){running=false;started=false;finished=false;passed=0;progress=0;jump=0;boost=0;days=0;dailyClock=0;world=0;sparks=[];last=0;cancelAnimationFrame(frame);stats();message('Платежи — ступеньки. Впереди твой свободный дом!');draw();}
+  function start(){if(finished||!started){reset();started=true;}if(!total){win();return;}running=true;last=0;message('Бежим легко! Ежемесячный платеж — прыжок. Ежедневные 2 000 ₽ — ускорение.');stats();cancelAnimationFrame(frame);frame=requestAnimationFrame(tick);}
+  function pause(){if(!started||finished)return;if(running){running=false;cancelAnimationFrame(frame);message('Передышка. Прогресс сохранен до конца этой игры.');stats();draw();}else start();}
+  function leap(){if(!running)return;jump=1;boost=Math.max(boost,.5);draw();}
+  function turbo(){if(!running)return;boost=2.5;jump=1;message('Ритм 2 000 ₽ каждый день: ускорение включено!');draw();}
+  function win(){running=false;finished=true;passed=total;cancelAnimationFrame(frame);stats();message('Получилось! Все '+total+' препятствий позади. Дом свободен — ты справился!');el('arcadeStart').textContent='Еще раз';draw();}
+  function tick(time){if(!running)return;const dt=Math.min((time-(last||time))/1000,.05);last=time;
+    const daily=el('arcadeAuto').checked,speed=(daily?2.4:1)*(boost>0?2:1);
+    world+=dt*speed;boost=Math.max(0,boost-dt);jump=Math.max(0,jump-dt*2);
+    progress+=dt*speed/1.15;
+    if(daily){dailyClock+=dt*speed/1.15*30;const count=Math.floor(dailyClock);days+=count;dailyClock-=count;}
+    // Friendly automatic jumps: no lost lives, missed payments or financial actions.
+    if(progress>.65&&jump===0)jump=.9;
+    if(progress>=1){progress-=1;passed++;jump=1;
+      if(!reduced)for(let i=0;i<9;i++)sparks.push({x:185,y:180,vx:40+Math.random()*120,vy:-100-Math.random()*100,life:.7});
+      if(passed>=total){win();return;}
+      if(passed%25===0)message(passed+' препятствий позади. Ты уверенно движешься к дому!');
+    }
+    sparks=sparks.filter(p=>(p.life-=dt)>0);for(const p of sparks){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=300*dt;}
+    stats();draw();frame=requestAnimationFrame(tick);
+  }
+  function round(x,y,w,h,r,color){ctx.fillStyle=color;ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill();}
+  function label(text,x,y,size=16,color='#173451',align='left'){ctx.fillStyle=color;ctx.font='700 '+size+'px Arial';ctx.textAlign=align;ctx.fillText(text,x,y);}
+  function draw(){
+    const w=900,h=300,ratio=Math.min(window.devicePixelRatio||1,2);if(canvas.width!==w*ratio){canvas.width=w*ratio;canvas.height=h*ratio;}ctx.setTransform(ratio,0,0,ratio,0,0);ctx.clearRect(0,0,w,h);
+    const sky=ctx.createLinearGradient(0,0,0,h);sky.addColorStop(0,'#dff6ff');sky.addColorStop(1,'#fff8db');ctx.fillStyle=sky;ctx.fillRect(0,0,w,h);
+    ctx.fillStyle='#ffd46b';ctx.beginPath();ctx.arc(745,58,31,0,Math.PI*2);ctx.fill();
+    for(let i=0;i<5;i++){const x=(i*240-world*12)%1200;round(x,70+(i%2)*25,100,24,12,'#ffffffb8');}
+    ctx.fillStyle='#b4dfca';ctx.beginPath();ctx.moveTo(0,248);ctx.quadraticCurveTo(210,105,450,248);ctx.quadraticCurveTo(650,145,900,238);ctx.lineTo(900,300);ctx.lineTo(0,300);ctx.fill();
+    round(0,246,900,54,0,'#274f54');round(0,242,900,6,0,'#75bf86');
+    for(let i=0;i<18;i++)round((i*65-world*100)%1000,270,26,3,1,'#75a794');
+    // The destination stays visible throughout the run.
+    round(785,164,64,77,5,'#fff6df');ctx.fillStyle='#df8259';ctx.beginPath();ctx.moveTo(774,165);ctx.lineTo(817,126);ctx.lineTo(861,165);ctx.fill();round(810,199,19,42,3,'#335d77');round(793,179,13,14,2,'#8dd7e8');label('МОЙ ДОМ',817,116,13,'#2c6561','center');
+    const x=650-progress*490;
+    if(!finished&&total){round(x,196,70,46,7,'#4775db');label(String(passed+1),x+35,224,20,'white','center');label('платеж',x+35,186,12,'#31598a','center');}
+    if(el('arcadeAuto').checked&&!finished){for(let i=0;i<4;i++){const cx=270+i*110-(world*95%110);ctx.fillStyle='#ffcb59';ctx.beginPath();ctx.arc(cx,142,13,0,Math.PI*2);ctx.fill();label('₽',cx,147,16,'#8f5b10','center');}label('+2 000 ₽ / день',450,99,16,'#806017','center');}
+    const heroX=finished?741:145,heroY=215-Math.sin(jump*Math.PI/2)*65;
+    if(boost>0&&!reduced){for(let i=0;i<3;i++)round(heroX-40-i*17,heroY+7+i*8,35,4,2,'#f0a62f');}
+    ctx.fillStyle='#f0b98a';ctx.beginPath();ctx.arc(heroX+15,heroY-29,13,0,Math.PI*2);ctx.fill();round(heroX+2,heroY-50,27,10,5,'#233851');round(heroX,heroY-15,30,33,7,'#1266c9');
+    ctx.strokeStyle='#233851';ctx.lineWidth=7;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(heroX+8,heroY+16);ctx.lineTo(heroX+3+(running?Math.sin(world*18)*7:0),heroY+28);ctx.moveTo(heroX+22,heroY+16);ctx.lineTo(heroX+30,heroY+26);ctx.stroke();
+    ctx.strokeStyle='#f0b98a';ctx.beginPath();ctx.moveTo(heroX+27,heroY-7);ctx.lineTo(heroX+41,heroY-22);ctx.stroke();
+    for(const p of sparks){ctx.globalAlpha=p.life/.7;round(p.x,p.y,6,6,2,'#f5b82e');}ctx.globalAlpha=1;
+    if(finished){round(240,28,420,64,16,'#fffef4');label('ИПОТЕКА ПРОЙДЕНА!',450,68,26,'#21735b','center');}
+    else if(!running){round(262,35,376,55,14,'#ffffffdf');label(started?'Пауза. Ты уже на пути!':total+' шагов? Легко. По одному!',450,69,21,'#214d6c','center');}
+  }
+  // Use the current bank schedule, not a hard-coded number of calendar months.
+  el('arcadeIntro').textContent='Впереди '+total+' платежных препятствий по текущему графику. Ежемесячно платим, ежедневно добавляем 2 000 ₽ — и набираем скорость.';
+  el('arcadeStart').onclick=()=>{el('arcadeStart').textContent='Заново';if(started)reset();start();};
+  el('arcadePause').onclick=pause;el('arcadeJump').onclick=leap;el('arcadeBoost').onclick=turbo;el('arcadeAuto').onchange=draw;
+  canvas.addEventListener('pointerdown',()=>{canvas.focus();if(!started)start();else leap();});
+  canvas.addEventListener('keydown',event=>{if(event.code==='Space'||event.code==='ArrowUp'){event.preventDefault();if(!started)start();else leap();}if(event.code==='KeyP'){event.preventDefault();pause();}});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden&&running)pause();});
+  new IntersectionObserver(entries=>{if(!entries[0].isIntersecting&&running)pause();},{threshold:0}).observe(root);
+  reset();
+})();
