@@ -3,33 +3,39 @@
   const root=document.getElementById('payoffArcade'),canvas=document.getElementById('arcadeCanvas');
   if(!root||!canvas)return;
   const ctx=canvas.getContext('2d'),el=id=>document.getElementById(id);
-  const source=window.MORTGAGE,now=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const source=window.MORTGAGE,now=source.paymentConfirmationDate||source.updated;
   const payments=source.rows.filter(r=>r.payment>0&&r.date>=now&&!(source.confirmedPaymentNumbers||[]).includes(r.n));
-  const total=payments.length,money=n=>new Intl.NumberFormat('ru-RU').format(n)+' ₽';
-  let running=false,started=false,finished=false,passed=0,progress=0,jump=0,boost=0,days=0,dailyClock=0,last=0,frame=0,world=0,sparks=[];
+  const baseline=payments,projection=window.projectPayoff(source,200000);
+  let route=[],total=0;
+  const money=n=>new Intl.NumberFormat('ru-RU').format(n)+' ₽';
+  let running=false,started=false,finished=false,passed=0,progress=0,jump=0,boost=0,last=0,frame=0,world=0,sparks=[];
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
   function stats(){
     el('arcadeCount').textContent=passed+' / '+total;
-    el('arcadeDaily').textContent=money(days*2000);
+    el('arcadeDaily').textContent=money((route[Math.min(passed,route.length)-1]?.extra||0)/100);
+    el('arcadeDebt').textContent=money((route[Math.min(passed,route.length)-1]?.balance??projection.initial)/100);
     el('arcadeBar').value=passed;el('arcadeBar').max=Math.max(1,total);
-    el('arcadeMonthly').textContent=payments[passed]?money(payments[passed].payment/100):'Все пройдены!';
+    el('arcadeMonthly').textContent=route[passed]?money(route[passed].payment/100):'Все пройдены!';
     el('arcadePause').disabled=!started||finished;
     el('arcadePause').textContent=running?'Пауза':'Продолжить';
     el('arcadeBoost').disabled=!running;
     el('arcadeJump').disabled=!running;
   }
   function message(text){el('arcadeMessage').textContent=text;}
-  function reset(){running=false;started=false;finished=false;passed=0;progress=0;jump=0;boost=0;days=0;dailyClock=0;world=0;sparks=[];last=0;cancelAnimationFrame(frame);stats();message('Платежи — ступеньки. Впереди твой свободный дом!');draw();}
-  function start(){if(finished||!started){reset();started=true;}if(!total){win();return;}running=true;last=0;message('Бежим легко! Ежемесячный платеж — прыжок. Ежедневные 2 000 ₽ — ускорение.');stats();cancelAnimationFrame(frame);frame=requestAnimationFrame(tick);}
+  function reset(){
+    route=el('arcadeAuto').checked?projection.stages:baseline;total=route.length;
+    el('arcadeComparison').textContent='Без досрочных: '+baseline.length+' платежей до '+baseline.at(-1)?.date+'. С 2 000 ₽ в день: примерно '+projection.monthlyCount+' ежемесячных платежей до '+projection.end+(projection.stages.at(-1)?.finalExtra?' и финальное досрочное закрытие.':'.');
+    el('arcadeIntro').textContent=el('arcadeAuto').checked?'Ежедневные 2 000 ₽ сокращают расчетный путь: '+total+' препятствий вместо '+baseline.length+'.':'Банковский график без новых досрочных взносов: '+total+' платежей.';
+    running=false;started=false;finished=false;passed=0;progress=0;jump=0;boost=0;world=0;sparks=[];last=0;cancelAnimationFrame(frame);stats();message('Платежи — ступеньки. Впереди твой свободный дом!');draw();}
+  function start(){if(finished||!started){reset();started=true;}if(!total){win();return;}running=true;last=0;message('Бежим легко! Ежемесячный платеж — прыжок. Ежедневные 2 000 ₽ сокращают путь.');stats();cancelAnimationFrame(frame);frame=requestAnimationFrame(tick);}
   function pause(){if(!started||finished)return;if(running){running=false;cancelAnimationFrame(frame);message('Передышка. Прогресс сохранен до конца этой игры.');stats();draw();}else start();}
   function leap(){if(!running)return;jump=1;boost=Math.max(boost,.5);draw();}
-  function turbo(){if(!running)return;boost=2.5;jump=1;message('Ритм 2 000 ₽ каждый день: ускорение включено!');draw();}
+  function turbo(){if(!running)return;boost=2.5;jump=1;message('Быстрый просмотр! Расчетный путь не меняется.');draw();}
   function win(){running=false;finished=true;passed=total;cancelAnimationFrame(frame);stats();message('Получилось! Все '+total+' препятствий позади. Дом свободен — ты справился!');el('arcadeStart').textContent='Еще раз';draw();}
   function tick(time){if(!running)return;const dt=Math.min((time-(last||time))/1000,.05);last=time;
-    const daily=el('arcadeAuto').checked,speed=(daily?2.4:1)*(boost>0?2:1);
+    const speed=boost>0?2:1;
     world+=dt*speed;boost=Math.max(0,boost-dt);jump=Math.max(0,jump-dt*2);
     progress+=dt*speed/1.15;
-    if(daily){dailyClock+=dt*speed/1.15*30;const count=Math.floor(dailyClock);days+=count;dailyClock-=count;}
     // Friendly automatic jumps: no lost lives, missed payments or financial actions.
     if(progress>.65&&jump===0)jump=.9;
     if(progress>=1){progress-=1;passed++;jump=1;
@@ -67,7 +73,7 @@
   // Use the current bank schedule, not a hard-coded number of calendar months.
   el('arcadeIntro').textContent='Впереди '+total+' платежных препятствий по текущему графику. Ежемесячно платим, ежедневно добавляем 2 000 ₽ — и набираем скорость.';
   el('arcadeStart').onclick=()=>{el('arcadeStart').textContent='Заново';if(started)reset();start();};
-  el('arcadePause').onclick=pause;el('arcadeJump').onclick=leap;el('arcadeBoost').onclick=turbo;el('arcadeAuto').onchange=draw;
+  el('arcadePause').onclick=pause;el('arcadeJump').onclick=leap;el('arcadeBoost').onclick=turbo;el('arcadeAuto').onchange=()=>{reset();el('arcadeStart').textContent='Начать путь'};
   canvas.addEventListener('pointerdown',()=>{canvas.focus();if(!started)start();else leap();});
   canvas.addEventListener('keydown',event=>{if(event.code==='Space'||event.code==='ArrowUp'){event.preventDefault();if(!started)start();else leap();}if(event.code==='KeyP'){event.preventDefault();pause();}});
   document.addEventListener('visibilitychange',()=>{if(document.hidden&&running)pause();});
