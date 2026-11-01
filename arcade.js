@@ -12,14 +12,35 @@
   function scenario(amount){const key=amount;if(!scenarioCache.has(key))scenarioCache.set(key,window.projectPayoff(source,amount*100));return scenarioCache.get(key);}
   let projection=scenario(dailyAmount);
   const displayDate=iso=>iso.split('-').reverse().join('.');
-  let route=[],total=0;
+  let route=[],total=0,dailyStates=new Map(),currentDay=now,dayState=null,markedStep=-1;
   const money=n=>new Intl.NumberFormat('ru-RU').format(n)+' ₽';
   let running=false,started=false,finished=false,passed=0,progress=0,jump=0,boost=0,last=0,frame=0,world=0,sparks=[];
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function calendarState(){
+    const previous=route[passed-1],next=route[passed];
+    const from=previous?.date||now,to=next?.date||projection.end;
+    const fromTime=Date.parse(from+'T00:00:00Z'),toTime=Date.parse(to+'T00:00:00Z');
+    currentDay=finished?projection.end:new Date(fromTime+Math.floor((toTime-fromTime)/86400000*Math.min(progress,1))*86400000).toISOString().slice(0,10);
+    dayState=dailyStates.get(currentDay)||{balance:previous?.balance??projection.initial,extra:previous?.extra||0,extraPaid:0,payment:0};
+    if(finished&&previous)dayState={...dayState,balance:previous.balance,extra:previous.extra||0};
+  }
+  function markTimeline(){
+    if(markedStep===passed)return;markedStep=passed;
+    document.querySelectorAll('#arcadeTimeline [data-step]').forEach(row=>{
+      const step=Number(row.dataset.step);
+      row.classList.toggle('timeline-done',step<passed);row.classList.toggle('timeline-current',step===passed);
+      if(step===passed)row.setAttribute('aria-current','step');else row.removeAttribute('aria-current');
+    });
+  }
   function stats(){
+    calendarState();markTimeline();
     el('arcadeCount').textContent=passed+' / '+total;
-    el('arcadeDaily').textContent=money((route[Math.min(passed,route.length)-1]?.extra||0)/100);
-    el('arcadeDebt').textContent=money((route[Math.min(passed,route.length)-1]?.balance??projection.initial)/100);
+    el('arcadeGameDate').textContent=displayDate(currentDay);
+    el('arcadeGameFinish').textContent=displayDate(projection.end);
+    el('arcadeTodayExtra').textContent=money((dayState.extraPaid||0)/100);
+    el('arcadeNextDate').textContent=route[passed]?displayDate(route[passed].date):'Финиш!';
+    el('arcadeDaily').textContent=money(dayState.extra/100);
+    el('arcadeDebt').textContent=money(dayState.balance/100);
     el('arcadeBar').value=passed;el('arcadeBar').max=Math.max(1,total);
     el('arcadeMonthly').textContent=route[passed]?(route[passed].finalExtra?'Досрочный финиш':money(route[passed].payment/100)):'Все пройдены!';
     el('arcadePause').disabled=!started||finished;
@@ -34,7 +55,7 @@
     for(const [i,r] of route.entries()){
       const year=r.date.slice(0,4),extra=(r.extra||0)-previousExtra,principal=previousBalance-r.balance;
       if(!years.has(year))years.set(year,[]);
-      years.get(year).push('<tr'+(i===route.length-1?' class="timeline-finish"':'')+'><th scope="row">'+formatMonth(r.date)+'<small>'+displayDate(r.date)+(i===route.length-1?' · ФИНИШ':'')+'</small></th><td>'+money(r.payment/100)+'</td><td>'+money(extra/100)+'<small>'+displayDate(previousDate)+' — '+displayDate(r.date)+'</small></td><td>'+money(principal/100)+'</td><td>'+money(r.balance/100)+'</td></tr>');
+      years.get(year).push('<tr data-step="'+i+'"'+(i===route.length-1?' class="timeline-finish"':'')+'><th scope="row">'+formatMonth(r.date)+'<small>'+displayDate(r.date)+(i===route.length-1?' · ФИНИШ':'')+'</small></th><td>'+money(r.payment/100)+'</td><td>'+money(extra/100)+'<small>'+displayDate(previousDate)+' — '+displayDate(r.date)+'</small></td><td>'+money(principal/100)+'</td><td>'+money(r.balance/100)+'</td></tr>');
       previousExtra=r.extra||0;previousBalance=r.balance;previousDate=r.date;
     }
     el('arcadeFinish').textContent=displayDate(projection.end);
@@ -45,6 +66,7 @@
   }
   function reset(){
     projection=scenario(dailyAmount);route=projection.stages;total=route.length;
+    dailyStates=new Map((projection.history||[]).map(day=>[day.date,day]));markedStep=-1;
     document.querySelectorAll('[data-daily]').forEach(button=>{const active=Number(button.dataset.daily)===dailyAmount;button.setAttribute('aria-pressed',String(active));button.classList.toggle('selected',active);});
     el('arcadeComparison').textContent=dailyAmount?money(dailyAmount)+' в '+unit()+': примерно '+projection.monthlyCount+' ежемесячных платежей'+(projection.stages.at(-1)?.finalExtra?' и отдельное досрочное закрытие':'')+' до '+displayDate(projection.end)+'. Без досрочных — '+baseline.length+' платежей.':'Без новых досрочных взносов: '+baseline.length+' платежей до '+displayDate(projection.end)+'.';
     el('arcadeIntro').textContent=dailyAmount?'Дополнительные '+money(dailyAmount)+' в '+unit()+' сокращают расчетный путь: '+total+' препятствий вместо '+baseline.length+'.':'Обычный режим: банковский график без новых досрочных взносов.';
@@ -54,7 +76,7 @@
   function pause(){if(!started||finished)return;if(running){running=false;cancelAnimationFrame(frame);message('Передышка. Прогресс сохранен до конца этой игры.');stats();draw();}else start();}
   function leap(){if(!running)return;jump=1;boost=Math.max(boost,.5);draw();}
   function turbo(){if(!running)return;boost=2.5;jump=1;message('Быстрый просмотр! Расчетный путь не меняется.');draw();}
-  function win(){running=false;finished=true;passed=total;cancelAnimationFrame(frame);stats();message('Получилось! Все '+total+' препятствий позади. Дом свободен — ты справился!');el('arcadeStart').textContent='Еще раз';draw();}
+  function win(){running=false;finished=true;passed=total;cancelAnimationFrame(frame);stats();message('Финиш '+displayDate(projection.end)+'! Остаток 0 ₽. Пройдено '+total+' этапов — ты справился!');el('arcadeStart').textContent='Еще раз';draw();}
   function tick(time){if(!running)return;const dt=Math.min((time-(last||time))/1000,.05);last=time;
     const speed=boost>0?2:1;
     world+=dt*speed;boost=Math.max(0,boost-dt);jump=Math.max(0,jump-dt*2);
@@ -64,7 +86,7 @@
     if(progress>=1){progress-=1;passed++;jump=1;
       if(!reduced)for(let i=0;i<9;i++)sparks.push({x:185,y:180,vx:40+Math.random()*120,vy:-100-Math.random()*100,life:.7});
       if(passed>=total){win();return;}
-      if(passed%25===0)message(passed+' препятствий позади. Ты уверенно движешься к дому!');
+      const completed=route[passed-1];message(displayDate(completed.date)+': платеж '+money(completed.payment/100)+' пройден. Остаток '+money(completed.balance/100)+'.');
     }
     sparks=sparks.filter(p=>(p.life-=dt)>0);for(const p of sparks){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=300*dt;}
     stats();draw();frame=requestAnimationFrame(tick);
@@ -79,10 +101,12 @@
     ctx.fillStyle='#b4dfca';ctx.beginPath();ctx.moveTo(0,248);ctx.quadraticCurveTo(210,105,450,248);ctx.quadraticCurveTo(650,145,900,238);ctx.lineTo(900,300);ctx.lineTo(0,300);ctx.fill();
     round(0,246,900,54,0,'#274f54');round(0,242,900,6,0,'#75bf86');
     for(let i=0;i<18;i++)round((i*65-world*100)%1000,270,26,3,1,'#75a794');
+    round(18,15,300,48,12,'#ffffffdf');label(new Date(currentDay+'T12:00:00Z').toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric',timeZone:'Europe/Moscow'}),32,44,19,'#214d6c');
+    label('Финиш '+displayDate(projection.end),875,25,14,'#214d6c','right');
     // The destination stays visible throughout the run.
     round(785,164,64,77,5,'#fff6df');ctx.fillStyle='#df8259';ctx.beginPath();ctx.moveTo(774,165);ctx.lineTo(817,126);ctx.lineTo(861,165);ctx.fill();round(810,199,19,42,3,'#335d77');round(793,179,13,14,2,'#8dd7e8');label('МОЙ ДОМ',817,116,13,'#2c6561','center');
     const x=650-progress*490;
-    if(!finished&&total){round(x,196,70,46,7,'#4775db');label(String(passed+1),x+35,224,20,'white','center');label('платеж',x+35,186,12,'#31598a','center');}
+    if(!finished&&total){round(x,196,70,46,7,'#4775db');label(String(passed+1),x+35,224,20,'white','center');label(route[passed].finalExtra?'досрочный финиш':displayDate(route[passed].date),x+35,186,12,'#31598a','center');}
     if(dailyAmount>0&&!finished){for(let i=0;i<4;i++){const cx=270+i*110-(world*95%110);ctx.fillStyle='#ffcb59';ctx.beginPath();ctx.arc(cx,142,13,0,Math.PI*2);ctx.fill();label('₽',cx,147,16,'#8f5b10','center');}label('+'+money(dailyAmount)+' / '+unit(),450,99,16,'#806017','center');}
     const heroX=finished?741:145,heroY=215-Math.sin(jump*Math.PI/2)*65;
     if(boost>0&&!reduced){for(let i=0;i<3;i++)round(heroX-40-i*17,heroY+7+i*8,35,4,2,'#f0a62f');}

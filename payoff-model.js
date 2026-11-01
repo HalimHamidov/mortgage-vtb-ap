@@ -18,16 +18,18 @@ window.projectPayoff = function(source,dailyExtra=200000){
   for(let d=nextDay(start);iso(d)<=future[0].date;d=nextDay(d))remainingAccrual+=balance*rate/annualDays(d);
   let interest=Math.max(0,future[0].interest-remainingAccrual);
   let extra=0,monthlyCount=0,monthlyPaid=0,stages=[];
+  const history=[{date:asof,balance,extra:0,extraPaid:0,payment:0}];
   const due=new Set(future.map(r=>r.date));
   function pay(budget){const charge=Math.min(budget,Math.round(interest));interest=Math.max(0,interest-charge);const principal=Math.min(balance,budget-charge);balance-=principal;return charge+principal;}
   for(let d=nextDay(start),i=0;i<365*50;i++,d=nextDay(d)){
     interest+=balance*rate/annualDays(d);
-    if(dailyExtra>0)extra+=pay(dailyExtra);
+    const extraPaid=dailyExtra>0?pay(dailyExtra):0;extra+=extraPaid;
     let payment=0;
     if(balance+Math.round(interest)>0&&due.has(iso(d))){payment=pay(regular);monthlyPaid+=payment;monthlyCount++;}
     const done=balance===0&&Math.round(interest)===0;
+    history.push({date:iso(d),balance,extra,extraPaid,payment});
     if(payment>0||done)stages.push({date:iso(d),payment,balance,extra,monthlyPaid,finalExtra:done&&payment===0});
-    if(done)return {stages,monthlyCount,extra,end:iso(d),initial};
+    if(done)return {stages,history,monthlyCount,extra,end:iso(d),initial};
   }
   throw new Error('Payoff projection did not converge');
 };
