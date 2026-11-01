@@ -52,12 +52,13 @@ function renderMonthlyReview(){
     ['Остаток после планового платежа',rub(planned.at(-1).balance)]
   ]);
 }
+function isAccounted(r){return r.date<asof()||(r.date===asof()&&(data.confirmedPaymentNumbers||[]).includes(r.n))}
 function summary(){
   renderRemainingTerm();
-  const prior=rows.filter(r=>r.date<asof()), balance=prior.length?prior.at(-1).balance:data.initial;
+  const prior=rows.filter(isAccounted), balance=prior.length?prior.at(-1).balance:data.initial;
   $('balance').textContent=rub(balance);const percent=(1-balance/data.initial)*100;
   $('progress').style.width=percent+'%';$('progressText').textContent=`Погашено основного долга: ${rub(data.initial-balance)} · ${percent.toFixed(1).replace('.',',')}%`;
-  nextRow=rows.find(r=>r.date>=asof()&&r.payment>0);
+  nextRow=rows.find(r=>!isAccounted(r)&&r.payment>0);
   $('nextLabel').textContent=nextRow?'Ближайший платёж по графику':'График погашения завершён';
   $('nextAmount').textContent=nextRow?rub(nextRow.payment):rub(0);
   $('nextDate').textContent=nextRow?date(nextRow.date)+(nextRow.start!==nextRow.date?' · перенесён с '+date(nextRow.start):''):'Ненулевых платежей после выбранной даты нет';
@@ -65,14 +66,14 @@ function summary(){
 }
 function renderTable(){
   const query=$('search').value.trim().toLowerCase().replace(/^№\s*/,''), year=$('year').value, period=$('period').value;
-  filtered=rows.filter(r=>(year==='all'||r.date.startsWith(year))&&(period==='all'||(period==='future'?r.date>=asof():r.date<asof()))&&(!query||date(r.date).includes(query)||r.date.includes(query)||String(r.n)===query||date(r.start).includes(query)));
+  filtered=rows.filter(r=>(year==='all'||r.date.startsWith(year))&&(period==='all'||(period==='future'?!isAccounted(r):isAccounted(r)))&&(!query||date(r.date).includes(query)||r.date.includes(query)||String(r.n)===query||date(r.start).includes(query)));
   const months=[...new Set(filtered.map(r=>r.date.slice(0,7)))];
   const pages=Math.max(1,Math.ceil(months.length/monthsPerPage));page=Math.max(0,Math.min(page,pages-1));
   const showAll=$('pageSize').value==='all';
   $('pagination').hidden=showAll;
   const visibleMonths=showAll?months:months.slice(page*monthsPerPage,(page+1)*monthsPerPage);
   const visibleRows=filtered.filter(r=>visibleMonths.includes(r.date.slice(0,7)));
-  $('rows').innerHTML=visibleRows.map(r=>`<tr class="${r.n===rows[selected].n?'active':''}"><td>${r.n}</td><td>${date(r.date)}${r.start!==r.date?'<small>с '+date(r.start)+'</small>':''}</td><td><strong>${rub(r.payment).replace(/\s*₽/,'')}</strong></td><td>${rub(r.principal).replace(/\s*₽/,'')}</td><td>${rub(r.interest).replace(/\s*₽/,'')}</td><td>${rub(r.balance).replace(/\s*₽/,'')}</td></tr>`).join('');
+  $('rows').innerHTML=visibleRows.map(r=>`<tr class="${r.n===rows[selected].n?'active':''}"><td>${r.n}</td><td>${date(r.date)}${(data.confirmedPaymentNumbers||[]).includes(r.n)?'<small>Погашен</small>':''}${r.start!==r.date?'<small>с '+date(r.start)+'</small>':''}</td><td><strong>${rub(r.payment).replace(/\s*₽/,'')}</strong></td><td>${rub(r.principal).replace(/\s*₽/,'')}</td><td>${rub(r.interest).replace(/\s*₽/,'')}</td><td>${rub(r.balance).replace(/\s*₽/,'')}</td></tr>`).join('');
   $('tableSummary').textContent=`${filtered.length} строк · платежи ${rub(sum(filtered,'payment'))} · проценты ${rub(sum(filtered,'interest'))}`;
   $('pageInfo').textContent=`из ${pages}`;$('pageNumber').value=page+1;$('pageNumber').max=pages;
   $('pageNumber').disabled=!filtered.length;$('jumpButton').disabled=!filtered.length;
@@ -100,7 +101,7 @@ function renderChart(){
 function selection(){const r=rows[selected];$('cursor').value=selected;$('cursorLabel').textContent=`№ ${r.n} · ${date(r.date)}`;$('detail').innerHTML=[['Платёж',r.payment],['В основной долг',r.principal],['Проценты',r.interest],['Остаток после платежа',r.balance]].map(([label,val])=>`<div>${label}<strong>${rub(val)}</strong></div>`).join('');renderChart();renderTable()}
 $('initial').textContent=rub(data.initial);$('allInterest').textContent=rub(sum(rows,'interest'));$('end').textContent=date(rows.filter(r=>r.payment>0).at(-1).date);
 $('asof').value=today();$('cursor').max=rows.length-1;renderMonthlyReview();[...new Set(rows.map(r=>r.date.slice(0,4)))].forEach(y=>$('year').add(new Option(y,y)));
-selected=Math.max(0,rows.findIndex(r=>r.date>=asof()&&r.payment>0));summary();selection();
+selected=Math.max(0,rows.findIndex(r=>!isAccounted(r)&&r.payment>0));summary();selection();
 $('asof').addEventListener('change',()=>{if(!$('asof').value)$('asof').value=data.updated;page=0;summary();renderTable()});
 $('today').onclick=()=>{$('asof').value=today();page=0;summary();renderTable()};
 $('cursor').oninput=()=>{selected=Number($('cursor').value);selection()};
