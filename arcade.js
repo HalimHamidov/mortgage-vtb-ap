@@ -22,9 +22,9 @@
     const previous=route[passed-1],next=route[passed];
     const from=previous?.date||now,to=next?.date||projection.end;
     const fromTime=Date.parse(from+'T00:00:00Z'),toTime=Date.parse(to+'T00:00:00Z');
-    currentDay=finished?projection.end:new Date(fromTime+Math.floor((toTime-fromTime)/86400000*Math.min(progress,1))*86400000).toISOString().slice(0,10);
+    currentDay=player.won?projection.end:new Date(fromTime+Math.floor((toTime-fromTime)/86400000*Math.min(progress,1))*86400000).toISOString().slice(0,10);
     dayState=dailyStates.get(currentDay)||{balance:previous?.balance??projection.initial,extra:previous?.extra||0,extraPaid:0,payment:0};
-    if(finished&&previous)dayState={...dayState,balance:previous.balance,extra:previous.extra||0};
+    if(player.won&&previous)dayState={...dayState,balance:previous.balance,extra:previous.extra||0};
   }
   function markTimeline(){
     if(markedStep===passed)return;markedStep=passed;
@@ -50,6 +50,8 @@
     el('arcadeBoost').disabled=!running;el('arcadeLeft').disabled=!running;el('arcadeRight').disabled=!running;
     el('arcadeCoins').textContent=player?player.coins.size+' / '+total:'0';
     el('arcadeRetries').textContent=player?String(player.retries):'0';
+    el('arcadeLives').textContent='♥'.repeat(player.lives)+'♡'.repeat(3-player.lives);
+    el('arcadeLives').setAttribute('aria-label','Осталось жизней: '+player.lives+' из 3');
     el('arcadeJump').disabled=!running;
   }
   function message(text){el('arcadeMessage').textContent=text;}
@@ -87,7 +89,8 @@
     let remaining=dt;while(remaining>0){const step=Math.min(remaining,.0125);player.update(step,keys);remaining-=step;}
     passed=player.passed;progress=player.won?0:(player.farthest-passed*300)/300;
     world=player.x/100;
-    if(player.retries!==previousRetries)message('Не страшно! Возвращаемся к последнему пройденному платежу. Прыгни над ямой.');
+    if(player.retries!==previousRetries)message('Потеряно сердечко. Осталось жизней: '+player.lives+'. Возвращаемся к последнему пройденному платежу.');
+    if(player.gameOver){running=false;finished=true;releaseControls();cancelAnimationFrame(frame);stats();message('Жизни закончились. Нажми «Еще раз», чтобы начать с тремя сердечками.');el('arcadeStart').textContent='Еще раз';draw();return;}
     if(player.won){win();return;}
     if(passed!==previousPassed){const completed=route[passed-1];message(displayDate(completed.date)+': этап пройден. Остаток '+money(completed.balance/100)+'.');}
     stats();draw();frame=requestAnimationFrame(tick);
@@ -114,7 +117,19 @@
     const x=player.x-camera,y=player.y;ctx.fillStyle='#e65346';ctx.fillRect(x+3,y+13,22,16);ctx.fillStyle='#2367bd';ctx.fillRect(x+3,y+26,22,9);ctx.fillStyle='#253b57';ctx.fillRect(x,y+34,12,6);ctx.fillRect(x+17,y+34,12,6);ctx.fillStyle='#f4be8d';ctx.fillRect(x+5,y+1,20,14);ctx.fillRect(x-2,y+18,7,11);ctx.fillRect(x+25,y+18,6,11);ctx.fillStyle='#1768ad';ctx.fillRect(x+2,y-3,23,7);ctx.fillRect(x+2,y+3,30,4);ctx.fillStyle='#263a4d';ctx.fillRect(x+20,y+9,3,3);
     round(12,10,440,45,9,'#ffffffed');label(displayDate(currentDay)+' · '+passed+'/'+total+' платежей · '+player.coins.size+' монет',25,39,17,'#234566');
     label('Финиш '+displayDate(projection.end),884,27,14,'#234566','right');
-    if(finished){round(245,72,410,64,12,'#fffaf0');label('ДОМ ТВОЙ. ИПОТЕКА ПРОЙДЕНА!',450,110,20,'#21735b','center');}
+    label('♥'.repeat(player.lives)+'♡'.repeat(3-player.lives),884,53,24,'#c93154','right');
+    if(player.won){
+      round(225,64,450,226,16,'#fffaf0');label('ДОМ ТВОЙ. ИПОТЕКА ПРОЙДЕНА!',450,92,19,'#21735b','center');
+      round(330,238,80,42,3,'#c5d2e2');round(410,210,80,70,3,'#f4c54b');round(490,249,80,31,3,'#dca17b');
+      label('2',370,269,23,'#34516c','center');label('1',450,254,32,'#765013','center');label('3',530,274,21,'#765013','center');
+      // Champion on the first-place podium, arms raised around the trophy.
+      round(438,184,24,18,0,'#e65346');round(438,199,24,8,0,'#2367bd');round(435,207,13,3,0,'#253b57');round(453,207,13,3,0,'#253b57');
+      round(440,172,20,14,0,'#f4be8d');round(436,168,27,6,0,'#1768ad');round(436,174,32,4,0,'#1768ad');
+      round(430,159,7,30,0,'#f4be8d');round(463,159,7,30,0,'#f4be8d');
+      ctx.strokeStyle='#d69a14';ctx.lineWidth=4;ctx.beginPath();ctx.arc(436,135,9,0,Math.PI*2);ctx.arc(464,135,9,0,Math.PI*2);ctx.stroke();ctx.lineWidth=1;
+      round(438,121,24,25,5,'#f4c431');round(447,145,6,12,0,'#d69a14');round(436,157,28,6,2,'#f4c431');label('★',450,139,15,'#fff9d7','center');
+    }
+    else if(player.gameOver){round(245,72,410,75,12,'#fffaf0');label('Жизни закончились',450,103,24,'#b02b47','center');label('Нажми «Еще раз» — у тебя будет 3 жизни',450,129,15,'#47657c','center');}
     else if(!running){round(245,72,410,65,12,'#ffffffed');label(started?'Пауза':'Твой ход: беги и прыгай!',450,103,22,'#234566','center');label('← →  ·  ПРОБЕЛ  ·  SHIFT',450,124,13,'#47657c','center');}
   }
   // Use the current bank schedule, not a hard-coded number of calendar months.
