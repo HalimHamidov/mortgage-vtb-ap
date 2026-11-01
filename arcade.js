@@ -5,7 +5,10 @@
   const ctx=canvas.getContext('2d'),el=id=>document.getElementById(id);
   const source=window.MORTGAGE,now=source.paymentConfirmationDate||source.updated;
   const payments=source.rows.filter(r=>r.payment>0&&r.date>=now&&!(source.confirmedPaymentNumbers||[]).includes(r.n));
-  const baseline=payments,projection=window.projectPayoff(source,200000);
+  const baseline=payments,amounts=[0,1000,2000,3000,4000,5000,10000];
+  const scenarios=new Map(amounts.map(amount=>[amount,window.projectPayoff(source,amount*100)]));
+  let dailyAmount=2000,projection=scenarios.get(dailyAmount);
+  const displayDate=iso=>iso.split('-').reverse().join('.');
   let route=[],total=0;
   const money=n=>new Intl.NumberFormat('ru-RU').format(n)+' ₽';
   let running=false,started=false,finished=false,passed=0,progress=0,jump=0,boost=0,last=0,frame=0,world=0,sparks=[];
@@ -15,7 +18,7 @@
     el('arcadeDaily').textContent=money((route[Math.min(passed,route.length)-1]?.extra||0)/100);
     el('arcadeDebt').textContent=money((route[Math.min(passed,route.length)-1]?.balance??projection.initial)/100);
     el('arcadeBar').value=passed;el('arcadeBar').max=Math.max(1,total);
-    el('arcadeMonthly').textContent=route[passed]?money(route[passed].payment/100):'Все пройдены!';
+    el('arcadeMonthly').textContent=route[passed]?(route[passed].finalExtra?'Досрочный финиш':money(route[passed].payment/100)):'Все пройдены!';
     el('arcadePause').disabled=!started||finished;
     el('arcadePause').textContent=running?'Пауза':'Продолжить';
     el('arcadeBoost').disabled=!running;
@@ -23,11 +26,12 @@
   }
   function message(text){el('arcadeMessage').textContent=text;}
   function reset(){
-    route=el('arcadeAuto').checked?projection.stages:baseline;total=route.length;
-    el('arcadeComparison').textContent='Без досрочных: '+baseline.length+' платежей до '+baseline.at(-1)?.date+'. С 2 000 ₽ в день: примерно '+projection.monthlyCount+' ежемесячных платежей до '+projection.end+(projection.stages.at(-1)?.finalExtra?' и финальное досрочное закрытие.':'.');
-    el('arcadeIntro').textContent=el('arcadeAuto').checked?'Ежедневные 2 000 ₽ сокращают расчетный путь: '+total+' препятствий вместо '+baseline.length+'.':'Банковский график без новых досрочных взносов: '+total+' платежей.';
+    projection=scenarios.get(dailyAmount);route=projection.stages;total=route.length;
+    document.querySelectorAll('[data-daily]').forEach(button=>{const active=Number(button.dataset.daily)===dailyAmount;button.setAttribute('aria-pressed',String(active));button.classList.toggle('selected',active);});
+    el('arcadeComparison').textContent=dailyAmount?money(dailyAmount)+' в день: примерно '+projection.monthlyCount+' ежемесячных платежей'+(projection.stages.at(-1)?.finalExtra?' и отдельное досрочное закрытие':'')+' до '+displayDate(projection.end)+'. Без досрочных — '+baseline.length+' платежей.':'Без новых досрочных взносов: '+baseline.length+' платежей до '+displayDate(projection.end)+'.';
+    el('arcadeIntro').textContent=dailyAmount?'Ежедневные '+money(dailyAmount)+' сокращают расчетный путь: '+total+' препятствий вместо '+baseline.length+'.':'Обычный режим: банковский график без новых досрочных взносов.';
     running=false;started=false;finished=false;passed=0;progress=0;jump=0;boost=0;world=0;sparks=[];last=0;cancelAnimationFrame(frame);stats();message('Платежи — ступеньки. Впереди твой свободный дом!');draw();}
-  function start(){if(finished||!started){reset();started=true;}if(!total){win();return;}running=true;last=0;message('Бежим легко! Ежемесячный платеж — прыжок. Ежедневные 2 000 ₽ сокращают путь.');stats();cancelAnimationFrame(frame);frame=requestAnimationFrame(tick);}
+  function start(){if(finished||!started){reset();started=true;}if(!total){win();return;}running=true;last=0;message('Бежим легко! Ежемесячный платеж — прыжок. Выбранный режим определяет длину пути.');stats();cancelAnimationFrame(frame);frame=requestAnimationFrame(tick);}
   function pause(){if(!started||finished)return;if(running){running=false;cancelAnimationFrame(frame);message('Передышка. Прогресс сохранен до конца этой игры.');stats();draw();}else start();}
   function leap(){if(!running)return;jump=1;boost=Math.max(boost,.5);draw();}
   function turbo(){if(!running)return;boost=2.5;jump=1;message('Быстрый просмотр! Расчетный путь не меняется.');draw();}
@@ -60,7 +64,7 @@
     round(785,164,64,77,5,'#fff6df');ctx.fillStyle='#df8259';ctx.beginPath();ctx.moveTo(774,165);ctx.lineTo(817,126);ctx.lineTo(861,165);ctx.fill();round(810,199,19,42,3,'#335d77');round(793,179,13,14,2,'#8dd7e8');label('МОЙ ДОМ',817,116,13,'#2c6561','center');
     const x=650-progress*490;
     if(!finished&&total){round(x,196,70,46,7,'#4775db');label(String(passed+1),x+35,224,20,'white','center');label('платеж',x+35,186,12,'#31598a','center');}
-    if(el('arcadeAuto').checked&&!finished){for(let i=0;i<4;i++){const cx=270+i*110-(world*95%110);ctx.fillStyle='#ffcb59';ctx.beginPath();ctx.arc(cx,142,13,0,Math.PI*2);ctx.fill();label('₽',cx,147,16,'#8f5b10','center');}label('+2 000 ₽ / день',450,99,16,'#806017','center');}
+    if(dailyAmount>0&&!finished){for(let i=0;i<4;i++){const cx=270+i*110-(world*95%110);ctx.fillStyle='#ffcb59';ctx.beginPath();ctx.arc(cx,142,13,0,Math.PI*2);ctx.fill();label('₽',cx,147,16,'#8f5b10','center');}label('+'+money(dailyAmount)+' / день',450,99,16,'#806017','center');}
     const heroX=finished?741:145,heroY=215-Math.sin(jump*Math.PI/2)*65;
     if(boost>0&&!reduced){for(let i=0;i<3;i++)round(heroX-40-i*17,heroY+7+i*8,35,4,2,'#f0a62f');}
     ctx.fillStyle='#f0b98a';ctx.beginPath();ctx.arc(heroX+15,heroY-29,13,0,Math.PI*2);ctx.fill();round(heroX+2,heroY-50,27,10,5,'#233851');round(heroX,heroY-15,30,33,7,'#1266c9');
@@ -71,12 +75,14 @@
     else if(!running){round(262,35,376,55,14,'#ffffffdf');label(started?'Пауза. Ты уже на пути!':total+' шагов? Легко. По одному!',450,69,21,'#214d6c','center');}
   }
   // Use the current bank schedule, not a hard-coded number of calendar months.
-  el('arcadeIntro').textContent='Впереди '+total+' платежных препятствий по текущему графику. Ежемесячно платим, ежедневно добавляем 2 000 ₽ — и набираем скорость.';
+
   el('arcadeStart').onclick=()=>{el('arcadeStart').textContent='Заново';if(started)reset();start();};
-  el('arcadePause').onclick=pause;el('arcadeJump').onclick=leap;el('arcadeBoost').onclick=turbo;el('arcadeAuto').onchange=()=>{reset();el('arcadeStart').textContent='Начать путь'};
+  el('arcadePause').onclick=pause;el('arcadeJump').onclick=leap;el('arcadeBoost').onclick=turbo;
   canvas.addEventListener('pointerdown',()=>{canvas.focus();if(!started)start();else leap();});
   canvas.addEventListener('keydown',event=>{if(event.code==='Space'||event.code==='ArrowUp'){event.preventDefault();if(!started)start();else leap();}if(event.code==='KeyP'){event.preventDefault();pause();}});
   document.addEventListener('visibilitychange',()=>{if(document.hidden&&running)pause();});
   new IntersectionObserver(entries=>{if(!entries[0].isIntersecting&&running)pause();},{threshold:0}).observe(root);
+  el('arcadeModes').innerHTML=amounts.map(amount=>{const p=scenarios.get(amount);return '<button type="button" data-daily="'+amount+'" aria-pressed="'+(amount===dailyAmount)+'">'+(amount?money(amount)+' / день':'Обычный')+'<small>'+p.monthlyCount+' ежемес. платежей'+(p.stages.at(-1)?.finalExtra?' + финиш':'')+'</small></button>';}).join('');
+  document.querySelectorAll('[data-daily]').forEach(button=>button.onclick=()=>{dailyAmount=Number(button.dataset.daily);reset();el('arcadeStart').textContent='Начать путь';});
   reset();
 })();
