@@ -5,9 +5,12 @@
   const ctx=canvas.getContext('2d'),el=id=>document.getElementById(id);
   const source=window.MORTGAGE,now=source.paymentConfirmationDate||source.updated;
   const payments=source.rows.filter(r=>r.payment>0&&r.date>=now&&!(source.confirmedPaymentNumbers||[]).includes(r.n));
-  const baseline=payments,amounts=[0,1000,2000,3000,4000,5000,10000];
-  const scenarios=new Map(amounts.map(amount=>[amount,window.projectPayoff(source,amount*100)]));
-  let dailyAmount=2000,projection=scenarios.get(dailyAmount);
+  const baseline=payments,amounts=[0,1000,2000,3000,4000,5000,10000,...Array.from({length:10},(_,i)=>(i+11)*1000)];
+  const scenarioCache=new Map();
+  let dailyAmount=2000;
+  const unit=()=>'день';
+  function scenario(amount){const key=amount;if(!scenarioCache.has(key))scenarioCache.set(key,window.projectPayoff(source,amount*100));return scenarioCache.get(key);}
+  let projection=scenario(dailyAmount);
   const displayDate=iso=>iso.split('-').reverse().join('.');
   let route=[],total=0;
   const money=n=>new Intl.NumberFormat('ru-RU').format(n)+' ₽';
@@ -25,11 +28,27 @@
     el('arcadeJump').disabled=!running;
   }
   function message(text){el('arcadeMessage').textContent=text;}
+  function renderTimeline(){
+    const years=new Map(),formatMonth=iso=>new Date(iso+'T12:00:00Z').toLocaleDateString('ru-RU',{month:'long',timeZone:'Europe/Moscow'});
+    let previousExtra=0,previousBalance=projection.initial,previousDate=now;
+    for(const [i,r] of route.entries()){
+      const year=r.date.slice(0,4),extra=(r.extra||0)-previousExtra,principal=previousBalance-r.balance;
+      if(!years.has(year))years.set(year,[]);
+      years.get(year).push('<tr'+(i===route.length-1?' class="timeline-finish"':'')+'><th scope="row">'+formatMonth(r.date)+'<small>'+displayDate(r.date)+(i===route.length-1?' · ФИНИШ':'')+'</small></th><td>'+money(r.payment/100)+'</td><td>'+money(extra/100)+'<small>'+displayDate(previousDate)+' — '+displayDate(r.date)+'</small></td><td>'+money(principal/100)+'</td><td>'+money(r.balance/100)+'</td></tr>');
+      previousExtra=r.extra||0;previousBalance=r.balance;previousDate=r.date;
+    }
+    el('arcadeFinish').textContent=displayDate(projection.end);
+    el('arcadeDuration').textContent=projection.monthlyCount+' ежемесячных платежей'+(route.at(-1)?.finalExtra?' + досрочный финиш':'');
+    el('timelineScenario').textContent=dailyAmount?'Расчетный сценарий: +'+money(dailyAmount)+' в '+unit():'Банковский график без новых досрочных взносов';
+    el('arcadeTimeline').innerHTML=[...years].map(([year,entries],i)=>'<details'+(i===0?' open':'')+'><summary>'+year+' год <span>'+entries.length+' дат</span></summary><div class="table-wrap"><table><caption class="sr-only">Хронология погашения за '+year+' год</caption><thead><tr><th scope="col">Месяц / дата</th><th scope="col">Плановый взнос</th><th scope="col">Досрочно за интервал</th><th scope="col">Погашено тела за интервал</th><th scope="col">Остаток</th></tr></thead><tbody>'+entries.join('')+'</tbody></table></div></details>').join('');
+    el('timelineExpand').textContent='Развернуть годы';
+  }
   function reset(){
-    projection=scenarios.get(dailyAmount);route=projection.stages;total=route.length;
+    projection=scenario(dailyAmount);route=projection.stages;total=route.length;
     document.querySelectorAll('[data-daily]').forEach(button=>{const active=Number(button.dataset.daily)===dailyAmount;button.setAttribute('aria-pressed',String(active));button.classList.toggle('selected',active);});
-    el('arcadeComparison').textContent=dailyAmount?money(dailyAmount)+' в день: примерно '+projection.monthlyCount+' ежемесячных платежей'+(projection.stages.at(-1)?.finalExtra?' и отдельное досрочное закрытие':'')+' до '+displayDate(projection.end)+'. Без досрочных — '+baseline.length+' платежей.':'Без новых досрочных взносов: '+baseline.length+' платежей до '+displayDate(projection.end)+'.';
-    el('arcadeIntro').textContent=dailyAmount?'Ежедневные '+money(dailyAmount)+' сокращают расчетный путь: '+total+' препятствий вместо '+baseline.length+'.':'Обычный режим: банковский график без новых досрочных взносов.';
+    el('arcadeComparison').textContent=dailyAmount?money(dailyAmount)+' в '+unit()+': примерно '+projection.monthlyCount+' ежемесячных платежей'+(projection.stages.at(-1)?.finalExtra?' и отдельное досрочное закрытие':'')+' до '+displayDate(projection.end)+'. Без досрочных — '+baseline.length+' платежей.':'Без новых досрочных взносов: '+baseline.length+' платежей до '+displayDate(projection.end)+'.';
+    el('arcadeIntro').textContent=dailyAmount?'Дополнительные '+money(dailyAmount)+' в '+unit()+' сокращают расчетный путь: '+total+' препятствий вместо '+baseline.length+'.':'Обычный режим: банковский график без новых досрочных взносов.';
+    renderTimeline();
     running=false;started=false;finished=false;passed=0;progress=0;jump=0;boost=0;world=0;sparks=[];last=0;cancelAnimationFrame(frame);stats();message('Платежи — ступеньки. Впереди твой свободный дом!');draw();}
   function start(){if(finished||!started){reset();started=true;}if(!total){win();return;}running=true;last=0;message('Бежим легко! Ежемесячный платеж — прыжок. Выбранный режим определяет длину пути.');stats();cancelAnimationFrame(frame);frame=requestAnimationFrame(tick);}
   function pause(){if(!started||finished)return;if(running){running=false;cancelAnimationFrame(frame);message('Передышка. Прогресс сохранен до конца этой игры.');stats();draw();}else start();}
@@ -64,7 +83,7 @@
     round(785,164,64,77,5,'#fff6df');ctx.fillStyle='#df8259';ctx.beginPath();ctx.moveTo(774,165);ctx.lineTo(817,126);ctx.lineTo(861,165);ctx.fill();round(810,199,19,42,3,'#335d77');round(793,179,13,14,2,'#8dd7e8');label('МОЙ ДОМ',817,116,13,'#2c6561','center');
     const x=650-progress*490;
     if(!finished&&total){round(x,196,70,46,7,'#4775db');label(String(passed+1),x+35,224,20,'white','center');label('платеж',x+35,186,12,'#31598a','center');}
-    if(dailyAmount>0&&!finished){for(let i=0;i<4;i++){const cx=270+i*110-(world*95%110);ctx.fillStyle='#ffcb59';ctx.beginPath();ctx.arc(cx,142,13,0,Math.PI*2);ctx.fill();label('₽',cx,147,16,'#8f5b10','center');}label('+'+money(dailyAmount)+' / день',450,99,16,'#806017','center');}
+    if(dailyAmount>0&&!finished){for(let i=0;i<4;i++){const cx=270+i*110-(world*95%110);ctx.fillStyle='#ffcb59';ctx.beginPath();ctx.arc(cx,142,13,0,Math.PI*2);ctx.fill();label('₽',cx,147,16,'#8f5b10','center');}label('+'+money(dailyAmount)+' / '+unit(),450,99,16,'#806017','center');}
     const heroX=finished?741:145,heroY=215-Math.sin(jump*Math.PI/2)*65;
     if(boost>0&&!reduced){for(let i=0;i<3;i++)round(heroX-40-i*17,heroY+7+i*8,35,4,2,'#f0a62f');}
     ctx.fillStyle='#f0b98a';ctx.beginPath();ctx.arc(heroX+15,heroY-29,13,0,Math.PI*2);ctx.fill();round(heroX+2,heroY-50,27,10,5,'#233851');round(heroX,heroY-15,30,33,7,'#1266c9');
@@ -82,7 +101,11 @@
   canvas.addEventListener('keydown',event=>{if(event.code==='Space'||event.code==='ArrowUp'){event.preventDefault();if(!started)start();else leap();}if(event.code==='KeyP'){event.preventDefault();pause();}});
   document.addEventListener('visibilitychange',()=>{if(document.hidden&&running)pause();});
   new IntersectionObserver(entries=>{if(!entries[0].isIntersecting&&running)pause();},{threshold:0}).observe(root);
-  el('arcadeModes').innerHTML=amounts.map(amount=>{const p=scenarios.get(amount);return '<button type="button" data-daily="'+amount+'" aria-pressed="'+(amount===dailyAmount)+'">'+(amount?money(amount)+' / день':'Обычный')+'<small>'+p.monthlyCount+' ежемес. платежей'+(p.stages.at(-1)?.finalExtra?' + финиш':'')+'</small></button>';}).join('');
-  document.querySelectorAll('[data-daily]').forEach(button=>button.onclick=()=>{dailyAmount=Number(button.dataset.daily);reset();el('arcadeStart').textContent='Начать путь';});
+  function renderModes(){
+    el('arcadeModes').innerHTML=amounts.map(amount=>{const p=scenario(amount);return '<button type="button" data-daily="'+amount+'" aria-pressed="'+(amount===dailyAmount)+'">'+(amount?money(amount)+' / '+unit():'Обычный')+'<small>'+p.monthlyCount+' ежемес. платежей'+(p.stages.at(-1)?.finalExtra?' + финиш':'')+'</small></button>';}).join('');
+    document.querySelectorAll('[data-daily]').forEach(button=>button.onclick=()=>{dailyAmount=Number(button.dataset.daily);reset();el('arcadeStart').textContent='Начать путь';});
+  }
+  el('timelineExpand').onclick=()=>{const all=[...el('arcadeTimeline').querySelectorAll('details')],open=all.some(d=>!d.open);all.forEach(d=>d.open=open);el('timelineExpand').textContent=open?'Свернуть годы':'Развернуть годы';};
+  renderModes();
   reset();
 })();
